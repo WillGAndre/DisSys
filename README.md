@@ -1,3 +1,5 @@
 # DisSys
 Distributed System CC4003 Project.
-Check out <pre>practical_assignment.pdf</pre>
+<pre>
+Check out practical_assignment.pdf
+</pre>
