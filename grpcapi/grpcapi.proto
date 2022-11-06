@@ -1,0 +1,12 @@
+syntax = "proto3";
+package grpcapi;
+option go_package = ".";
+
+message Message {
+  string body = 1;
+}
+
+service Shell {
+  rpc Ping(Message) returns (Message) {}
+  rpc Word(Message) returns (Message) {}
+}
