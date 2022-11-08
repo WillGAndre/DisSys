@@ -5,19 +5,18 @@ import (
 	"log"
 	"math"
 	"os"
-	"time"
 
 	"golang.org/x/exp/rand"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
-const LAMBDA = 1
+const LAMBDA = 2
 
 func PoissonProcessTimeToNextEvent() float64 {
 	return (-math.Log(1-rand.Float64()) / LAMBDA)
 }
 
 // time -> unit
+// 1 --> 1 min --> 60 seg
 func PoissonProcessEvents(time float64) float64 {
 	var n float64
 	n = 0
@@ -32,17 +31,8 @@ func PoissonProcessEvents(time float64) float64 {
 	return n
 }
 
-func GenRandom() int64 {
-	source := rand.NewSource(uint64(time.Now().UnixNano()))
-	p := distuv.Poisson{
-		Lambda: LAMBDA,
-		Src:    source,
-	}
-	return int64(p.Rand())
-}
-
-func GetLines() []string {
-	f, err := os.Open("engmix.txt")
+func GetLines(path string) []string {
+	f, err := os.Open(path)
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"token-ring/common"
@@ -17,6 +18,7 @@ import (
 )
 
 const K = 5
+const SAMPLES = 100
 
 type Peer struct {
 	Port     uint16            `json:"port"`
@@ -43,7 +45,7 @@ func NewPeer(port uint16) *Peer {
 		Addr:     conn.LocalAddr().(*net.UDPAddr).IP,
 	}
 	go Listen(p)
-	go p.PoissonWordProcess()
+	go p.PoissonWordProcess(SAMPLES)
 	return p
 }
 
@@ -60,33 +62,41 @@ func Listen(p *Peer) {
 }
 
 // frequency of 1 event each 30 seconds
-func (p *Peer) PoissonWordProcess() {
-	for { // literal translation
-		lines := common.GetLines()
-		wdi := mrand.Intn(len(lines))
-		wd := lines[wdi]
+func (p *Peer) PoissonWordProcess(samples uint) {
+	var ut float64
+	timestamps := make([]float64, 0)
+	i := 1
 
-		p.mu.Lock()
-		p.WordList = append(p.WordList, wd)
-		p.mu.Unlock()
-		go p.Gossip(wd)
-		time.Sleep(30 * time.Second)
+	// set seed
+	mrand.Seed(int64(p.Port))
+
+	// gen event timestamps
+	for i < int(samples) {
+		ut += common.PoissonProcessTimeToNextEvent()
+		timestamps = append(timestamps, ut*60)
+		i += 1
 	}
 
-	// for {
-	// 	events := common.PoissonProcessEvents(1)
-	// 	for events > 0 {
-	// 		lines := common.GetLines()
-	// 		wdi := mrand.Intn(len(lines))
-	// 		wd := lines[wdi]
-	// 		p.mu.Lock()
-	// 		p.WordList = append(p.WordList, wd)
-	// 		p.mu.Unlock()
-	// 		go p.Gossip(wd)
-	// 		events -= 1
-	// 	}
-	// 	time.Sleep(time.Duration(common.PoissonProcessTimeToNextEvent()) * time.Second)
-	// }
+	// orchestrate events
+	i = 0
+	start := time.Now()
+	for i < len(timestamps) {
+		v := timestamps[i]
+		if time.Since(start).Seconds() >= v {
+			lines := common.GetLines("engmix.txt")
+			wdi := mrand.Intn(len(lines))
+			wd := lines[wdi]
+
+			p.mu.Lock()
+			p.WordList = append(p.WordList, wd)
+			p.mu.Unlock()
+			go p.Gossip(wd, p.Port)
+			i += 1
+		} else {
+			evtime := start.Add(time.Duration(v))
+			time.Sleep(time.Since(evtime))
+		}
+	}
 }
 
 func (p *Peer) Register(regaddr int) {
@@ -97,7 +107,6 @@ func (p *Peer) Register(regaddr int) {
 	}
 	defer conn.Close()
 
-	// log.Printf("%s\n", fmt.Sprintf("[%d] -> [%d] Token: %d", p.Port, p.Next, p.Token))
 	g := grpcapi.NewShellClient(conn)
 	res, err := g.Ping(context.Background(), &grpcapi.Message{Body: fmt.Sprintf("%d", p.Port)})
 	if err != nil {
@@ -112,21 +121,26 @@ func (p *Peer) Register(regaddr int) {
 	p.Registry[p.Count] = uint16(pport)
 	p.Count++
 	p.mu.Unlock()
+
+	fmt.Printf("\t[%d] Ping Peer %d\n", p.Port, pport)
 }
 
-func (p *Peer) Gossip(word string) {
+func (p *Peer) Gossip(word string, gossipeer uint16) {
 	for _, peer := range p.Registry {
-		var conn *grpc.ClientConn
-		conn, err := grpc.Dial(fmt.Sprintf(":%d", peer), grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			log.Fatalln(err)
-		}
-		defer conn.Close()
+		if peer != gossipeer {
+			fmt.Printf("\t[%d] Gossiping %s to %d\n", p.Port, word, peer)
+			var conn *grpc.ClientConn
+			conn, err := grpc.Dial(fmt.Sprintf(":%d", peer), grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Fatalln(err)
+			}
+			defer conn.Close()
 
-		g := grpcapi.NewShellClient(conn)
-		_, err = g.Word(context.Background(), &grpcapi.Message{Body: word})
-		if err != nil {
-			log.Fatalf("error calling grpc call: %s\n", err)
+			g := grpcapi.NewShellClient(conn)
+			_, err = g.Word(context.Background(), &grpcapi.Message{Body: fmt.Sprintf("%s:%d", word, p.Port)})
+			if err != nil {
+				log.Fatalf("error calling grpc call: %s\n", err)
+			}
 		}
 	}
 }
@@ -141,11 +155,19 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 	p.Registry[p.Count] = uint16(addr)
 	p.Count++
 	p.mu.Unlock()
+
+	fmt.Printf("\t[%d] Ping from %d\n", p.Port, addr)
 	return &grpcapi.Message{Body: fmt.Sprintf("%d", p.Port)}, nil
 }
 
 func (p *Peer) Word(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
-	word := in.Body
+	split := strings.Split(in.Body, ":")
+	fmt.Printf("\t[%d] Received %s from %s\n", p.Port, split[0], split[1])
+	word := split[0]
+	pport, err := strconv.Atoi(split[1])
+	if err != nil {
+		log.Fatalln(err)
+	}
 	new := true
 	for _, hword := range p.WordList {
 		if word == hword {
@@ -157,9 +179,12 @@ func (p *Peer) Word(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		p.mu.Lock()
 		p.WordList = append(p.WordList, word)
 		p.mu.Unlock()
-		go p.Gossip(word)
+		go p.Gossip(word, uint16(pport))
 	} else {
-		// TODO: stop gossip with prob 1/k
+		prob := mrand.Float64()
+		if prob >= 1/K {
+			go p.Gossip(word, uint16(pport))
+		}
 	}
 
 	return &grpcapi.Message{Body: ""}, nil
