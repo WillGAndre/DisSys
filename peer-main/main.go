@@ -24,5 +24,6 @@ func main() {
 	}
 	fmt.Printf("Starting peer with: %s\n", args)
 	p := peer.NewPeer(uint16(port), uint16(next), uint8(lock))
-	peer.PeerShell(p)
+	p.PeerShell()
+	// peer.PeerShell(p)
 }

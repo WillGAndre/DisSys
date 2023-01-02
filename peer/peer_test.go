@@ -6,7 +6,7 @@ import (
 
 func TestSelfPeerPing(t *testing.T) {
 	p := NewPeer(4443, 4443, 1)
-	PeerShell(p)
+	p.PeerShell()
 }
 
 func TestPeerPing(t *testing.T) {
