@@ -8,7 +8,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"token-ring/common"
 	grpcapi "token-ring/grpcapi"
@@ -18,15 +17,13 @@ import (
 )
 
 const K = 5
-const SAMPLES = 100
+const SAMPLES = 25 // 100
 
 type Peer struct {
-	Port     uint16            `json:"port"`
-	Registry map[uint16]uint16 `json:"registry"`
-	WordList []string          `json:"wordlist"`
-	Count    uint16            `json:"count"` // <= K
-	Addr     net.IP            `json:"addr"`
-	mu       sync.Mutex
+	Port     uint16   `json:"port"`
+	Registry []uint16 `json:"registry"`
+	WordList []string `json:"wordlist"`
+	Addr     net.IP   `json:"addr"`
 	grpcapi.UnimplementedShellServer
 }
 
@@ -39,9 +36,8 @@ func NewPeer(port uint16) *Peer {
 
 	p := &Peer{
 		Port:     port,
-		Registry: make(map[uint16]uint16),
+		Registry: make([]uint16, 0),
 		WordList: make([]string, 0),
-		Count:    0,
 		Addr:     conn.LocalAddr().(*net.UDPAddr).IP,
 	}
 	go Listen(p)
@@ -70,7 +66,7 @@ func (p *Peer) PoissonWordProcess(samples uint) {
 	// set seed
 	mrand.Seed(int64(p.Port))
 
-	// gen event timestamps
+	// gen event timestamps, cast abstract time to sec (60s -- 1min ; λ = 2 ; 2 evs per 60s <=> 1ev per 30s)
 	for i < int(samples) {
 		ut += common.PoissonProcessTimeToNextEvent()
 		timestamps = append(timestamps, ut*60)
@@ -87,9 +83,7 @@ func (p *Peer) PoissonWordProcess(samples uint) {
 			wdi := mrand.Intn(len(lines))
 			wd := lines[wdi]
 
-			p.mu.Lock()
 			p.WordList = append(p.WordList, wd)
-			p.mu.Unlock()
 			go p.Gossip(wd, p.Port)
 			i += 1
 		} else {
@@ -117,14 +111,11 @@ func (p *Peer) Register(regaddr int) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	p.mu.Lock()
-	p.Registry[p.Count] = uint16(pport)
-	p.Count++
-	p.mu.Unlock()
-
+	p.Registry = append(p.Registry, uint16(pport))
 	fmt.Printf("\t[%d] Ping Peer %d\n", p.Port, pport)
 }
 
+// gossipeer is the peer that "originaly" gossiped the word.
 func (p *Peer) Gossip(word string, gossipeer uint16) {
 	for _, peer := range p.Registry {
 		if peer != gossipeer {
@@ -151,11 +142,7 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		log.Fatalln(err)
 	}
 
-	p.mu.Lock()
-	p.Registry[p.Count] = uint16(addr)
-	p.Count++
-	p.mu.Unlock()
-
+	p.Registry = append(p.Registry, uint16(addr))
 	fmt.Printf("\t[%d] Ping from %d\n", p.Port, addr)
 	return &grpcapi.Message{Body: fmt.Sprintf("%d", p.Port)}, nil
 }
@@ -176,14 +163,15 @@ func (p *Peer) Word(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 	}
 
 	if new {
-		p.mu.Lock()
 		p.WordList = append(p.WordList, word)
-		p.mu.Unlock()
 		go p.Gossip(word, uint16(pport))
 	} else {
 		prob := mrand.Float64()
-		if prob >= 1/K {
+		if prob >= (1.0 / K) {
+			p.WordList = append(p.WordList, word)
 			go p.Gossip(word, uint16(pport))
+		} else {
+			fmt.Printf("\t[%d] Found repeated message '%s' from %s: Stopping gossiping\n", p.Port, split[0], split[1])
 		}
 	}
 

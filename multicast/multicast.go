@@ -77,8 +77,8 @@ func NewGoldPeer(port uint16, remote uint16) *Gold {
 	go Listen(p)
 	go func(p *Gold) {
 		for {
-			time.Sleep(10 * time.Second)
-			p.ExchangeQueue(int(p.Remote))
+			time.Sleep(5 * time.Second)
+			go p.ExchangeQueue(int(p.Remote))
 		}
 	}(p)
 	return p
@@ -117,7 +117,7 @@ func (p *Peer) MulticastProcess(samples uint) {
 	// gen event timestamps
 	for i < int(samples) {
 		ut += common.PoissonProcessTimeToNextEvent()
-		timestamps = append(timestamps, ut*60)
+		timestamps = append(timestamps, ut*2)
 		i += 1
 	}
 
@@ -128,7 +128,7 @@ func (p *Peer) MulticastProcess(samples uint) {
 	for i < len(timestamps) {
 		v := timestamps[i]
 		if time.Since(start).Seconds() >= v {
-			go p.PingAll()
+			p.PingAll("ping")
 			i += 1
 		} else {
 			evtime := start.Add(time.Duration(v))
@@ -137,7 +137,7 @@ func (p *Peer) MulticastProcess(samples uint) {
 	}
 }
 
-func (p *Peer) PingPeer(addr int) {
+func (p *Peer) PingPeer(addr int, msg string) {
 	p.Clock += 1
 	var conn *grpc.ClientConn
 	conn, err := grpc.Dial(fmt.Sprintf(":%d", addr), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -147,9 +147,16 @@ func (p *Peer) PingPeer(addr int) {
 	defer conn.Close()
 
 	g := grpcapi.NewShellClient(conn)
-	msg := fmt.Sprintf("%d:%d", p.Port, p.Clock)
-	fmt.Printf("\t[%d;%d] Ping Peer %d\n", p.Port, p.Clock, addr)
-	res, err := g.Ping(context.Background(), &grpcapi.Message{Body: msg})
+	if msg == "ping" {
+		fmt.Printf("\t[%d;%d] Ping Peer %d\n", p.Port, p.Clock, addr)
+	} else if msg == "hello" {
+		fmt.Printf("\t[%d;%d] Hello Peer %d\n", p.Port, p.Clock, addr)
+	} else if strings.Contains(msg, "ack") {
+		fmt.Printf("\t[%d;%d] Ack Peer Ping %d\n", p.Port, p.Clock, addr)
+	} else {
+		fmt.Printf("\t[%d;%d] %s - Peer: %d\n", p.Port, p.Clock, msg, addr)
+	}
+	res, err := g.Ping(context.Background(), &grpcapi.Message{Body: fmt.Sprintf("%s:%d:%d", msg, p.Port, p.Clock)})
 	if err != nil {
 		log.Fatalf("error calling grpc call: %s\n", err)
 	}
@@ -173,7 +180,7 @@ func (p *Peer) PingPeer(addr int) {
 	// fmt.Printf("\t[%d;%d] ACK Ping from %d\n\n", p.Port, p.Clock, addr)
 }
 
-func (p *Peer) PingGold(addr int) {
+func (p *Peer) PingGold(addr int, msg string) {
 	p.Clock += 1
 	var conn *grpc.ClientConn
 	conn, err := grpc.Dial(fmt.Sprintf(":%d", addr), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -183,9 +190,8 @@ func (p *Peer) PingGold(addr int) {
 	defer conn.Close()
 
 	g := grpcapi.NewShellClient(conn)
-	msg := fmt.Sprintf("%d:%d", p.Port, p.Clock)
 	fmt.Printf("\t[%d;%d] Ping Gold Peer %d\n", p.Port, p.Clock, addr)
-	_, err = g.Ping(context.Background(), &grpcapi.Message{Body: msg})
+	_, err = g.Ping(context.Background(), &grpcapi.Message{Body: fmt.Sprintf("%s:%d:%d", msg, p.Port, p.Clock)})
 	if err != nil {
 		log.Fatalf("error calling grpc call: %s\n", err)
 	}
@@ -198,30 +204,30 @@ func (p *Peer) PingGold(addr int) {
 	// fmt.Printf("\t[%d;%d] ACK Gold Peer queue: %s\n\n", p.Port, p.Clock, out)
 }
 
-func (p *Peer) PingGolds() {
+func (p *Peer) PingGolds(msg string) {
 	if len(p.Storage) == 0 {
 		return
 	}
 	for _, addr := range p.Storage {
-		go p.PingGold(int(addr))
+		go p.PingGold(int(addr), msg)
 	}
 }
 
-func (p *Peer) PingAll() {
+func (p *Peer) PingAll(msg string) {
 	for _, addr := range p.Registry {
-		go p.PingPeer(int(addr))
+		go p.PingPeer(int(addr), msg)
 	}
-	p.PingGolds()
+	p.PingGolds(msg)
 }
 
 /** Peer impl of Ping **/
 func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
 	msg := strings.Split(in.Body, ":")
-	addr, err := strconv.Atoi(msg[0])
+	addr, err := strconv.Atoi(msg[1])
 	if err != nil {
 		log.Fatalln(err)
 	}
-	clock, err := strconv.Atoi(msg[1])
+	clock, err := strconv.Atoi(msg[2])
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -233,13 +239,17 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		p.Clock = uint16(clock) + 1
 	}
 
-	fmt.Printf("\t[%d;%d] ACK Ping from %d\n\n", p.Port, p.Clock, addr)
+	if strings.Contains(msg[0], "ping") {
+		p.PingAll(fmt.Sprintf("ack-%d-%d", addr, clock))
+		fmt.Printf("\t[%d;%d] ACK Ping from %d\n\n", p.Port, p.Clock, addr)
+	}
 	return &grpcapi.Message{Body: fmt.Sprintf("%d:%d", p.Port, p.Clock)}, nil
 }
 
 /** Gold impl of Ping **/
 func (g *Gold) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
 	msg := in.Body
+	ack := false
 	queue := fmt.Sprintf("%s", g.Queue)
 
 	if strings.Contains(msg, "[") {
@@ -258,11 +268,14 @@ func (g *Gold) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		}
 	} else if strings.Contains(msg, ":") {
 		out := strings.Split(msg, ":")
-		addr, err := strconv.Atoi(out[0])
+		if strings.Contains(out[0], "ack") {
+			ack = true
+		}
+		addr, err := strconv.Atoi(out[1])
 		if err != nil {
 			log.Fatalln(err)
 		}
-		clock, err := strconv.Atoi(out[1])
+		clock, err := strconv.Atoi(out[2])
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -273,12 +286,18 @@ func (g *Gold) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		hit := false
 		if len(g.Queue) > 1 {
 			for i, v := range g.Queue {
-				vclock, err := strconv.Atoi(strings.Split(v, ":")[1])
+				vclock, err := strconv.Atoi(strings.Split(v, ":")[2])
 				if err != nil {
 					log.Fatalln(err)
 				}
 				if clock > vclock {
-					g.Queue = common.Insert(g.Queue, i, msg)
+					// verfify if ack consistent (duplicate), if so remove
+					ackout := strings.Split(out[0], "-")
+					if ack && g.CheckFromAck(ackout[1], ackout[2]) {
+						fmt.Printf("\t[%d] ACK Ping from %d; Current queue: %s\n\n", g.Port, addr, g.Queue)
+					} else {
+						g.Queue = common.Insert(g.Queue, i, msg)
+					}
 					hit = true
 					break
 				}
@@ -287,15 +306,34 @@ func (g *Gold) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		if !hit {
 			g.Queue = append(g.Queue, msg)
 		}
-		fmt.Printf("\t[%d] ACK Ping from %d; Current queue: %s\n\n", g.Port, addr, g.Queue)
+		fmt.Printf("\t[%d] Current queue: %s\n\n", g.Port, g.Queue)
 	}
 	goto res
 err:
-	fmt.Printf("\t[*;%d] Queue not synchronized ; Local queue: %s ; Remote queue: %s\n\n", g.Port, g.Queue, msg)
+	// fmt.Printf("\t[*;%d] Queue not synchronized ; Local queue: %s ; Remote queue: %s\n\n", g.Port, g.Queue, msg)
 	return &grpcapi.Message{Body: "err: Queue not synchronized"}, nil
 
 res:
+	queue = fmt.Sprintf("%s", g.Queue)
 	return &grpcapi.Message{Body: queue}, nil
+}
+
+// check for ping in queue
+func (g *Gold) CheckFromAck(ackaddr string, ackclock string) bool {
+	for _, v := range g.Queue {
+		split := strings.Split(v, ":")
+		vclock, err := strconv.Atoi(split[2])
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if ackaddr == split[1] && (ackclock == split[2] ||
+			ackclock == fmt.Sprintf("%d", vclock+1) ||
+			ackclock == fmt.Sprintf("%d", vclock+2) ||
+			ackclock == fmt.Sprintf("%d", vclock+3)) { // check for addr and clock or clock+1 (allow delay)
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Gold) ExchangeQueue(addr int) {

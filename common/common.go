@@ -11,24 +11,14 @@ import (
 
 const LAMBDA = 2
 
+/*
+	Events bellow are generated assuming abstract time = 1.
+	We define λ = 2 since by multiplying the generated timestamps
+	by 60s -- 1min, we can conclude that 1ev -- 30s <=> 2ev -- 60s.
+	We do this to be able to define real time values spaced out by event frequency.
+*/
 func PoissonProcessTimeToNextEvent() float64 {
 	return (-math.Log(1-rand.Float64()) / LAMBDA)
-}
-
-// time -> unit
-// 1 --> 1 min --> 60 seg
-func PoissonProcessEvents(time float64) float64 {
-	var n float64
-	n = 0
-	p := math.Exp(-LAMBDA * time)
-	s := p
-	u := rand.Float64()
-	for u > s {
-		n += 1
-		p = (p * LAMBDA) / n
-		s = s + p
-	}
-	return n
 }
 
 func GetLines(path string) []string {
@@ -74,6 +64,10 @@ func Contains(stack interface{}, needle interface{}) bool {
 		}
 	}
 	return false
+}
+
+func RemoveByIndex(s []string, i int) []string {
+	return append(s[:i], s[i+1:]...)
 }
 
 func GetRandString(s int) string {

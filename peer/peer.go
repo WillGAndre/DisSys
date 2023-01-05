@@ -17,6 +17,7 @@ import (
 )
 
 // Peer TTL
+// 	decremented for each token action (Bind)
 const TTL = 4
 
 type Peer struct {
