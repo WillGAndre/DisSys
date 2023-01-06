@@ -41,13 +41,18 @@ func GetLines(path string) []string {
 
 // aux
 
-func Insert(s []string, i int, v string) []string { // len(s) > 1
+// Insert function, assuming len(s) > 1.
+// Since the index to insert (order within the queue) is discovered by the multicast
+// module, we simply create a new position for insertion, append the rhs (right-hand-side) of the queue
+// to the lfs (left-hand-side) (of the queue), s[i+1:] & s[i:] respectively, and then insert our value.
+func Insert(s []string, i int, v string) []string {
 	s = append(s, "")
 	copy(s[i+1:], s[i:])
 	s[i] = v
 	return s
 }
 
+// "loose" contains function
 func Contains(stack interface{}, needle interface{}) bool {
 	switch stack := stack.(type) {
 	case []string:
@@ -66,6 +71,7 @@ func Contains(stack interface{}, needle interface{}) bool {
 	return false
 }
 
+// removes a value by index, used by the multicast queue to remove msgs.
 func RemoveByIndex(s []string, i int) []string {
 	return append(s[:i], s[i+1:]...)
 }

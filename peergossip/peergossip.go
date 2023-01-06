@@ -93,6 +93,7 @@ func (p *Peer) PoissonWordProcess(samples uint) {
 	}
 }
 
+// Register peer (add addr to Registry)
 func (p *Peer) Register(regaddr int) {
 	var conn *grpc.ClientConn
 	conn, err := grpc.Dial(fmt.Sprintf(":%d", regaddr), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -136,6 +137,9 @@ func (p *Peer) Gossip(word string, gossipeer uint16) {
 	}
 }
 
+// grpc calls
+
+// Ping - discovery
 func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
 	addr, err := strconv.Atoi(in.Body)
 	if err != nil {
@@ -147,6 +151,7 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 	return &grpcapi.Message{Body: fmt.Sprintf("%d", p.Port)}, nil
 }
 
+// grpc implementation of Word grpc call: adds word to list and gossips word if new or if random prob >= 1/K
 func (p *Peer) Word(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
 	split := strings.Split(in.Body, ":")
 	fmt.Printf("\t[%d] Received %s from %s\n", p.Port, split[0], split[1])

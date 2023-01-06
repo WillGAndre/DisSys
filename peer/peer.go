@@ -135,12 +135,11 @@ func LockPeer(addr int, actionType bool) {
 	log.Printf("\tPeer %d status: %s", addr, res)
 }
 
-// grpcapi calls
-
+// grpcapi implementation of ping
 func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message, error) {
 	msg := in.Body
 	res := ""
-	if strings.Contains(in.Body, "t") {
+	if strings.Contains(in.Body, "t") { // expect token
 		msg = strings.Split(msg, ":")[1]
 		token, err := strconv.Atoi(msg)
 		if err != nil {
@@ -160,7 +159,7 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 			return &grpcapi.Message{Body: "2:2"}, nil
 		}
 		res = fmt.Sprintf("0:%d", token)
-	} else if strings.Contains(in.Body, "l") {
+	} else if strings.Contains(in.Body, "l") { // expect action (lock/unlock)
 		lock := strings.Split(msg, ":")[1]
 		if lock == "1" {
 			p.Lock = 1
@@ -170,23 +169,4 @@ func (p *Peer) Ping(ctx context.Context, in *grpcapi.Message) (*grpcapi.Message,
 		res = fmt.Sprintf("%+v", p)
 	}
 	return &grpcapi.Message{Body: res}, nil
-
-	// token, err := strconv.Atoi(in.Body)
-	// if err != nil {
-	// 	log.Fatalln(err)
-	// }
-
-	// if p.TTL <= 0 {
-	// 	return &grpcapi.Message{Body: "1:1"}, nil
-	// }
-
-	// if p.Lock == 0 {
-	// 	fmt.Printf("\n%s\n", fmt.Sprintf("Token: %d\tPeer: %d", token, p.Port))
-	// 	p.Token = token + 1
-	// 	p.TTL -= 1
-	// 	p.Bind()
-	// } else if p.Lock == 1 {
-	// 	return &grpcapi.Message{Body: "2:2"}, nil
-	// }
-	// return &grpcapi.Message{Body: fmt.Sprintf("0:%d", token)}, nil
 }

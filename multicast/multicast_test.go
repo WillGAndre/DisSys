@@ -3,89 +3,63 @@ package multicast
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
-func TestPartialMulticast(t *testing.T) {
-	p1 := NewPeer(4444)
-	p2 := NewPeer(4445)
-	// p1.PingPeer(int(p2.Port))
+func TestV2MULTI(t *testing.T) {
+	p1 := NewPeer(4441, false)
+	p2 := NewPeer(4442, false)
+	p3 := NewPeer(4443, false)
+	p4 := NewPeer(4444, false)
+	p5 := NewPeer(4445, true)
+	p6 := NewPeer(4446, true)
 
-	for {
-		fmt.Printf("\n%+v\n", p1)
-		fmt.Printf("\n%+v\n", p2)
-
-		time.Sleep(5 * time.Second)
-		p1.PingPeer(int(p2.Port), "ping")
-	}
-}
-
-func TestPartialGold(t *testing.T) {
-	p1 := NewPeer(4444)
-	p2 := NewPeer(4445)
-	g1 := NewGoldPeer(4446, 4447)
-	g2 := NewGoldPeer(4447, 4446)
-
-	p1.PingPeer(int(p2.Port), "ping")
-	p1.PingGold(int(g1.Port), "ping")
-	p1.PingGold(int(g2.Port), "ping")
-	p2.PingGold(int(g1.Port), "ping")
-	p2.PingGold(int(g2.Port), "ping")
-
-	for {
-		fmt.Printf("\n%+v\n", p1)
-		fmt.Printf("\n%+v\n", p2)
-
-		fmt.Printf("\n%+v\n", g1)
-		fmt.Printf("\n%+v\n", g2)
-
-		time.Sleep(5 * time.Second)
-		p1.PingGolds("ping")
-		p2.PingGolds("ping")
-		p1.PingPeer(int(p2.Port), "ping")
-	}
-}
-
-func TestMulticastProc(t *testing.T) {
-	p1 := NewPeer(4444)
-	p2 := NewPeer(4445)
-	// p3 := NewPeer(4448)
-	// p4 := NewPeer(4449)
-	// p5 := NewPeer(4451)
-	g1 := NewGoldPeer(4446, 4447)
-	g2 := NewGoldPeer(4447, 4446)
-
-	// peer recon
+	p1.PingPeer(int(p1.Port), "hello")
 	p1.PingPeer(int(p2.Port), "hello")
-	// p1.PingPeer(int(p3.Port))
-	// p1.PingPeer(int(p4.Port))
-	// p1.PingPeer(int(p5.Port))
+	p1.PingPeer(int(p3.Port), "hello")
+	p1.PingPeer(int(p4.Port), "hello")
+	p1.PingPeer(int(p5.Port), "hello")
+	p1.PingPeer(int(p6.Port), "hello")
 
-	// p2.PingPeer(int(p3.Port))
-	// p2.PingPeer(int(p4.Port))
-	// p2.PingPeer(int(p5.Port))
+	p2.PingPeer(int(p2.Port), "hello")
+	p2.PingPeer(int(p3.Port), "hello")
+	p2.PingPeer(int(p4.Port), "hello")
+	p2.PingPeer(int(p5.Port), "hello")
+	p2.PingPeer(int(p6.Port), "hello")
 
-	// gold peer recon
-	p1.PingGold(int(g1.Port), "hello")
-	p1.PingGold(int(g2.Port), "hello")
-	p2.PingGold(int(g1.Port), "hello")
-	p2.PingGold(int(g2.Port), "hello")
-	// p3.PingGold(int(g1.Port))
-	// p3.PingGold(int(g2.Port))
-	// p4.PingGold(int(g1.Port))
-	// p4.PingGold(int(g2.Port))
-	// p5.PingGold(int(g1.Port))
-	// p5.PingGold(int(g2.Port))
+	p3.PingPeer(int(p3.Port), "hello")
+	p3.PingPeer(int(p4.Port), "hello")
+	p3.PingPeer(int(p5.Port), "hello")
+	p3.PingPeer(int(p6.Port), "hello")
 
-	// g1.ExchangeQueue(int(g2.Port))
+	p4.PingPeer(int(p4.Port), "hello")
+	p4.PingPeer(int(p5.Port), "hello")
+	p4.PingPeer(int(p6.Port), "hello")
 
-	fmt.Print("\t____________________\n\n")
+	p5.PingPeer(int(p5.Port), "hello")
+	p5.PingPeer(int(p6.Port), "hello")
+
+	p6.PingPeer(int(p6.Port), "hello")
 	for {
+	}
+}
+
+func TestPartialMulticastWithGold(t *testing.T) {
+	p1 := NewPeer(4444, false)
+	p2 := NewPeer(4445, false)
+
+	p1.PingPeer(int(p1.Port), "hello")
+	p1.PingPeer(int(p2.Port), "hello")
+	p2.PingPeer(int(p2.Port), "hello")
+	// fmt.Printf("\n%+v\n", p1)
+	// fmt.Printf("\n%+v\n", p2)
+
+	p1.PingAll("ping")
+	// fmt.Println("____________________________________________")
+	fmt.Printf("\nP1 QUEUE: %+v\n", p1.Queue)
+	p2.PingAll("ping")
+	for {
+		// time.Sleep(2 * time.Second)
 		// fmt.Printf("\n%+v\n", p1)
 		// fmt.Printf("\n%+v\n", p2)
-		// fmt.Printf("\n%+v\n", g1)
-		// fmt.Printf("\n%+v\n", g2)
-
-		// time.Sleep(5 * time.Second)
 	}
 }
