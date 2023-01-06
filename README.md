@@ -13,3 +13,4 @@ For a single module use flags:
     -peer-gossip
     -multicast
 </pre>
+<i>Guilherme Pereira - up201809622</i>
